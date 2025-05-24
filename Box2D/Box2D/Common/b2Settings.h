@@ -16,6 +16,8 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
+// WARNING, must be copied manually to include directory!
+
 #ifndef B2_SETTINGS_H
 #define B2_SETTINGS_H
 
@@ -74,7 +76,7 @@ typedef double float64;
 /// The radius of the polygon/edge shape skin. This should not be modified. Making
 /// this smaller means polygons will have an insufficient buffer for continuous collision.
 /// Making it larger may create artifacts for vertex collision.
-#define b2_polygonRadius		(2.0f * b2_linearSlop)
+#define b2_polygonRadius		0.0f
 
 /// Maximum number of sub-steps per contact in continuous physics simulation.
 #define b2_maxSubSteps			8
@@ -91,7 +93,7 @@ typedef double float64;
 
 /// The maximum linear position correction used when solving constraints. This helps to
 /// prevent overshoot.
-#define b2_maxLinearCorrection		0.2f
+#define b2_maxLinearCorrection		0.0f
 
 /// The maximum angular position correction used when solving constraints. This helps to
 /// prevent overshoot.
@@ -99,12 +101,12 @@ typedef double float64;
 
 /// The maximum linear velocity of a body. This limit is very large and is used
 /// to prevent numerical problems. You shouldn't need to adjust this.
-#define b2_maxTranslation			2.0f
+#define b2_maxTranslation			100000.0f
 #define b2_maxTranslationSquared	(b2_maxTranslation * b2_maxTranslation)
 
 /// The maximum angular velocity of a body. This limit is very large and is used
 /// to prevent numerical problems. You shouldn't need to adjust this.
-#define b2_maxRotation				(0.5f * b2_pi)
+#define b2_maxRotation				b2_pi * 100000
 #define b2_maxRotationSquared		(b2_maxRotation * b2_maxRotation)
 
 /// This scale factor controls how fast overlap is resolved. Ideally this would be 1 so

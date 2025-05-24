@@ -249,6 +249,11 @@ struct b2SeparationFunction
 	b2Vec2 m_axis;
 };
 
+static float32 custom_slop = b2_linearSlop;
+void set_custom_slop(float32 slop) {
+    custom_slop = slop;
+}
+
 // CCD via the local separating axis method. This seeks progression
 // by computing the largest time at which separation is maintained.
 void b2TimeOfImpact(b2TOIOutput* output, const b2TOIInput* input)
@@ -274,8 +279,8 @@ void b2TimeOfImpact(b2TOIOutput* output, const b2TOIInput* input)
 	float32 tMax = input->tMax;
 
 	float32 totalRadius = proxyA->m_radius + proxyB->m_radius;
-	float32 target = b2Max(b2_linearSlop, totalRadius - 3.0f * b2_linearSlop);
-	float32 tolerance = 0.25f * b2_linearSlop;
+	float32 target = b2Max(custom_slop, totalRadius - 3.0f * custom_slop);
+	float32 tolerance = 0.25f * custom_slop;
 	b2Assert(target > tolerance);
 
 	float32 t1 = 0.0f;
