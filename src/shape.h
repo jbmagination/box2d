@@ -98,11 +98,11 @@ b2ShapeProxy b2MakeShapeDistanceProxy( const b2Shape* shape );
 b2CastOutput b2RayCastShape( const b2RayCastInput* input, const b2Shape* shape, b2Transform transform );
 b2CastOutput b2ShapeCastShape( const b2ShapeCastInput* input, const b2Shape* shape, b2Transform transform );
 
-b2PlaneResult b2CollideMoverAndCircle( const b2Circle* shape, const b2Capsule* mover );
-b2PlaneResult b2CollideMoverAndCapsule( const b2Capsule* shape, const b2Capsule* mover );
-b2PlaneResult b2CollideMoverAndPolygon( const b2Polygon* shape, const b2Capsule* mover );
-b2PlaneResult b2CollideMoverAndSegment( const b2Segment* shape, const b2Capsule* mover );
-b2PlaneResult b2CollideMover( const b2Shape* shape, b2Transform transform, const b2Capsule* mover );
+b2PlaneResult b2CollideMoverAndCircle( const b2Capsule* mover, const b2Circle* shape );
+b2PlaneResult b2CollideMoverAndCapsule( const b2Capsule* mover, const b2Capsule* shape );
+b2PlaneResult b2CollideMoverAndPolygon( const b2Capsule* mover, const b2Polygon* shape );
+b2PlaneResult b2CollideMoverAndSegment( const b2Capsule* mover, const b2Segment* shape );
+b2PlaneResult b2CollideMover( const b2Capsule* mover, const b2Shape* shape, b2Transform transform );
 
 static inline float b2GetShapeRadius( const b2Shape* shape )
 {
@@ -117,6 +117,21 @@ static inline float b2GetShapeRadius( const b2Shape* shape )
 		default:
 			return 0.0f;
 	}
+}
+
+static inline bool b2ShouldShapesCollide( b2Filter filterA, b2Filter filterB )
+{
+	if ( filterA.groupIndex == filterB.groupIndex && filterA.groupIndex != 0 )
+	{
+		return filterA.groupIndex > 0;
+	}
+
+	return ( filterA.maskBits & filterB.categoryBits ) != 0 && ( filterA.categoryBits & filterB.maskBits ) != 0;
+}
+
+static inline bool b2ShouldQueryCollide( b2Filter shapeFilter, b2QueryFilter queryFilter )
+{
+	return ( shapeFilter.categoryBits & queryFilter.maskBits ) != 0 && ( shapeFilter.maskBits & queryFilter.categoryBits ) != 0;
 }
 
 B2_ARRAY_INLINE( b2ChainShape, b2ChainShape )

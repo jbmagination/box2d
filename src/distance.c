@@ -496,6 +496,10 @@ b2DistanceOutput b2ShapeDistance( const b2DistanceInput* input, b2SimplexCache* 
 		if ( simplex.count == 3 )
 		{
 			// Overlap
+			b2Vec2 localPointA, localPointB;
+			b2ComputeSimplexWitnessPoints( &localPointA, &localPointB, &simplex );
+			output.pointA = b2TransformPoint( input->transformA, localPointA );
+			output.pointB = b2TransformPoint( input->transformA, localPointB );
 			return output;
 		}
 
@@ -517,6 +521,10 @@ b2DistanceOutput b2ShapeDistance( const b2DistanceInput* input, b2SimplexCache* 
 			// or triangle. Thus the shapes are overlapped.
 
 			// Must return overlap due to invalid normal.
+			b2Vec2 localPointA, localPointB;
+			b2ComputeSimplexWitnessPoints( &localPointA, &localPointB, &simplex );
+			output.pointA = b2TransformPoint( input->transformA, localPointA );
+			output.pointB = b2TransformPoint( input->transformA, localPointB );
 			return output;
 		}
 
@@ -610,7 +618,7 @@ b2CastOutput b2ShapeCast( const b2ShapeCastPairInput* input )
 	// Prepare input for distance query
 	b2SimplexCache cache = { 0 };
 
-	float alpha = 0.0f;
+	float fraction = 0.0f;
 
 	b2DistanceInput distanceInput = { 0 };
 	distanceInput.proxyA = input->proxyA;
@@ -623,7 +631,8 @@ b2CastOutput b2ShapeCast( const b2ShapeCastPairInput* input )
 	b2CastOutput output = { 0 };
 
 	int iteration = 0;
-	int maxIterations = 20;
+	const int maxIterations = 20;
+
 	for ( ; iteration < maxIterations; ++iteration )
 	{
 		output.iterations += 1;
@@ -640,19 +649,13 @@ b2CastOutput b2ShapeCast( const b2ShapeCastPairInput* input )
 				}
 				else
 				{
-					if ( distanceOutput.distance < FLT_EPSILON )
-					{
-						// Normal may be invalid
-						return output;
-					}
-
-					// Initial overlap but distance is non-zero due to radius.
-					// Note: this can result in initial hits for shapes with a radius
-					B2_ASSERT( b2IsNormalized( distanceOutput.normal ) );
-					output.fraction = alpha;
-					output.point = b2MulAdd( distanceOutput.pointA, input->proxyA.radius, distanceOutput.normal );
-					output.normal = distanceOutput.normal;
+					// Initial overlap
 					output.hit = true;
+					
+					// Compute a common point
+					b2Vec2 c1 = b2MulAdd( distanceOutput.pointA, input->proxyA.radius, distanceOutput.normal );
+					b2Vec2 c2 = b2MulAdd( distanceOutput.pointB, -input->proxyB.radius, distanceOutput.normal );
+					output.point = b2Lerp( c1, c2, 0.5f );
 					return output;
 				}
 			}
@@ -660,7 +663,7 @@ b2CastOutput b2ShapeCast( const b2ShapeCastPairInput* input )
 			{
 				// Regular hit
 				B2_ASSERT( distanceOutput.distance > 0.0f && b2IsNormalized( distanceOutput.normal ) );
-				output.fraction = alpha;
+				output.fraction = fraction;
 				output.point = b2MulAdd( distanceOutput.pointA, input->proxyA.radius, distanceOutput.normal );
 				output.normal = distanceOutput.normal;
 				output.hit = true;
@@ -676,20 +679,18 @@ b2CastOutput b2ShapeCast( const b2ShapeCastPairInput* input )
 		if ( denominator >= 0.0f )
 		{
 			// Miss
-			output.fraction = 1.0f;
 			return output;
 		}
 
 		// Advance sweep
-		alpha += ( target - distanceOutput.distance ) / denominator;
-		if ( alpha >= input->maxFraction )
+		fraction += ( target - distanceOutput.distance ) / denominator;
+		if ( fraction >= input->maxFraction )
 		{
 			// Miss
-			output.fraction = 1.0f;
 			return output;
 		}
 
-		distanceInput.transformB.p = b2MulAdd( input->transformB.p, alpha, delta2 );
+		distanceInput.transformB.p = b2MulAdd( input->transformB.p, fraction, delta2 );
 	}
 
 	// Failure!
@@ -1160,8 +1161,6 @@ b2TOIOutput b2TimeOfImpact( const b2TOIInput* input )
 	float tMax = input->maxFraction;
 
 	float totalRadius = proxyA->radius + proxyB->radius;
-	// todo_erin consider different target
-	// float target = b2MaxFloat( B2_LINEAR_SLOP, totalRadius );
 	float target = b2MaxFloat( B2_LINEAR_SLOP, totalRadius - B2_LINEAR_SLOP );
 	float tolerance = 0.25f * B2_LINEAR_SLOP;
 	B2_ASSERT( target > tolerance );
@@ -1229,6 +1228,11 @@ b2TOIOutput b2TimeOfImpact( const b2TOIInput* input )
 #if B2_SNOOP_TOI_COUNTERS
 			b2_toiHitCount += 1;
 #endif
+			// Averaged hit point
+			b2Vec2 pA = b2MulAdd( distanceOutput.pointA, proxyA->radius, distanceOutput.normal );
+			b2Vec2 pB = b2MulAdd( distanceOutput.pointB, -proxyB->radius, distanceOutput.normal );
+			output.point = b2Lerp( pA, pB, 0.5f );
+			output.normal = distanceOutput.normal;
 			output.fraction = t1;
 			break;
 		}
@@ -1317,6 +1321,11 @@ b2TOIOutput b2TimeOfImpact( const b2TOIInput* input )
 #if B2_SNOOP_TOI_COUNTERS
 				b2_toiHitCount += 1;
 #endif
+				// Averaged hit point
+				b2Vec2 pA = b2MulAdd( distanceOutput.pointA, proxyA->radius, distanceOutput.normal );
+				b2Vec2 pB = b2MulAdd( distanceOutput.pointB, -proxyB->radius, distanceOutput.normal );
+				output.point = b2Lerp( pA, pB, 0.5f );
+				output.normal = distanceOutput.normal;
 				output.fraction = t1;
 				done = true;
 				break;
@@ -1397,6 +1406,11 @@ b2TOIOutput b2TimeOfImpact( const b2TOIInput* input )
 #if B2_SNOOP_TOI_COUNTERS
 			b2_toiFailedCount += 1;
 #endif
+			// Averaged hit point
+			b2Vec2 pA = b2MulAdd( distanceOutput.pointA, proxyA->radius, distanceOutput.normal );
+			b2Vec2 pB = b2MulAdd( distanceOutput.pointB, -proxyB->radius, distanceOutput.normal );
+			output.point = b2Lerp( pA, pB, 0.5f );
+			output.normal = distanceOutput.normal;
 			output.fraction = t1;
 			break;
 		}

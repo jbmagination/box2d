@@ -154,20 +154,20 @@ public:
 				b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
 				b2Vec2 pivot = { xBase + 1.0f * i, yBase };
-				jointDef.bodyIdA = prevBodyId;
-				jointDef.bodyIdB = bodyId;
-				jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
-				jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
+				jointDef.base.bodyIdA = prevBodyId;
+				jointDef.base.bodyIdB = bodyId;
+				jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+				jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
 				b2CreateRevoluteJoint( m_worldId, &jointDef );
 
 				prevBodyId = bodyId;
 			}
 
 			b2Vec2 pivot = { xBase + 1.0f * count, yBase };
-			jointDef.bodyIdA = prevBodyId;
-			jointDef.bodyIdB = groundId2;
-			jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
-			jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
+			jointDef.base.bodyIdA = prevBodyId;
+			jointDef.base.bodyIdB = groundId2;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
 
@@ -327,7 +327,7 @@ public:
 			m_pogoVelocity = 0.0f;
 
 			b2Vec2 delta = translation;
-			m_draw->DrawSegment( origin, origin + delta, b2_colorGray );
+			m_draw->DrawLine( origin, origin + delta, b2_colorGray );
 
 			if ( m_pogoShape == PogoPoint )
 			{
@@ -339,23 +339,18 @@ public:
 			}
 			else
 			{
-				m_draw->DrawSegment( segment.point1 + delta, segment.point2 + delta, b2_colorGray );
+				m_draw->DrawLine( segment.point1 + delta, segment.point2 + delta, b2_colorGray );
 			}
 		}
 		else
 		{
 			float pogoCurrentLength = castResult.fraction * rayLength;
 
-			float zeta = m_pogoDampingRatio;
-			float hertz = m_pogoHertz;
-			float omega = 2.0f * B2_PI * hertz;
-			float omegaH = omega * timeStep;
-
-			m_pogoVelocity = ( m_pogoVelocity - omega * omegaH * ( pogoCurrentLength - pogoRestLength ) ) /
-							 ( 1.0f + 2.0f * zeta * omegaH + omegaH * omegaH );
+			float offset = pogoCurrentLength - pogoRestLength;
+			m_pogoVelocity = b2SpringDamper( m_pogoHertz, m_pogoDampingRatio, offset, m_pogoVelocity, timeStep );
 
 			b2Vec2 delta = castResult.fraction * translation;
-			m_draw->DrawSegment( origin, origin + delta, b2_colorGray );
+			m_draw->DrawLine( origin, origin + delta, b2_colorGray );
 
 			if ( m_pogoShape == PogoPoint )
 			{
@@ -367,7 +362,7 @@ public:
 			}
 			else
 			{
-				m_draw->DrawSegment( segment.point1 + delta, segment.point2 + delta, b2_colorPlum );
+				m_draw->DrawLine( segment.point1 + delta, segment.point2 + delta, b2_colorPlum );
 			}
 
 			b2Body_ApplyForce( castResult.bodyId, { 0.0f, -50.0f }, castResult.point, true );
@@ -394,15 +389,13 @@ public:
 			mover.radius = m_capsule.radius;
 
 			b2World_CollideMover( m_worldId, &mover, collideFilter, PlaneResultFcn, this );
-			b2PlaneSolverResult result = b2SolvePlanes( target, m_planes, m_planeCount );
+			b2PlaneSolverResult result = b2SolvePlanes( target - m_transform.p, m_planes, m_planeCount );
 
 			m_totalIterations += result.iterationCount;
 
-			b2Vec2 moverTranslation = result.position - m_transform.p;
+			float fraction = b2World_CastMover( m_worldId, &mover, result.translation, castFilter );
 
-			float fraction = b2World_CastMover( m_worldId, &mover, moverTranslation, castFilter );
-
-			b2Vec2 delta = fraction * moverTranslation;
+			b2Vec2 delta = fraction * result.translation;
 			m_transform.p += delta;
 
 			if ( b2LengthSquared( delta ) < tolerance * tolerance )
@@ -509,7 +502,7 @@ public:
 		Sample::Keyboard( key );
 	}
 
-	void Step( ) override
+	void Step() override
 	{
 		bool pause = false;
 		if ( m_context->pause )
@@ -535,7 +528,7 @@ public:
 
 		m_time += timeStep;
 
-		Sample::Step( );
+		Sample::Step();
 
 		if ( pause == false )
 		{
@@ -575,7 +568,7 @@ public:
 			b2Vec2 p1 = m_transform.p + ( plane.offset - m_capsule.radius ) * plane.normal;
 			b2Vec2 p2 = p1 + 0.1f * plane.normal;
 			m_draw->DrawPoint( p1, 5.0f, b2_colorYellow );
-			m_draw->DrawSegment( p1, p2, b2_colorYellow );
+			m_draw->DrawLine( p1, p2, b2_colorYellow );
 		}
 
 		b2Vec2 p1 = b2TransformPoint( m_transform, m_capsule.center1 );
@@ -583,7 +576,7 @@ public:
 
 		b2HexColor color = m_onGround ? b2_colorOrange : b2_colorAquamarine;
 		m_draw->DrawSolidCapsule( p1, p2, m_capsule.radius, color );
-		m_draw->DrawSegment( m_transform.p, m_transform.p + m_velocity, b2_colorPurple );
+		m_draw->DrawLine( m_transform.p, m_transform.p + m_velocity, b2_colorPurple );
 
 		b2Vec2 p = m_transform.p;
 		DrawTextLine( "position %.2f %.2f", p.x, p.y );
@@ -746,20 +739,20 @@ public:
 				b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
 				b2Vec2 pivot = { xBase + 1.0f * i, yBase };
-				jointDef.bodyIdA = prevBodyId;
-				jointDef.bodyIdB = bodyId;
-				jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
-				jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
+				jointDef.base.bodyIdA = prevBodyId;
+				jointDef.base.bodyIdB = bodyId;
+				jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+				jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
 				b2CreateRevoluteJoint( m_worldId, &jointDef );
 
 				prevBodyId = bodyId;
 			}
 
 			b2Vec2 pivot = { xBase + 1.0f * count, yBase };
-			jointDef.bodyIdA = prevBodyId;
-			jointDef.bodyIdB = groundId2;
-			jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
-			jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
+			jointDef.base.bodyIdA = prevBodyId;
+			jointDef.base.bodyIdB = groundId2;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
 

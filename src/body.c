@@ -13,7 +13,7 @@
 #include "sensor.h"
 #include "shape.h"
 #include "solver_set.h"
-#include "world.h"
+#include "physics_world.h"
 
 #include "box2d/box2d.h"
 #include "box2d/id.h"
@@ -24,6 +24,15 @@
 B2_ARRAY_SOURCE( b2Body, b2Body )
 B2_ARRAY_SOURCE( b2BodySim, b2BodySim )
 B2_ARRAY_SOURCE( b2BodyState, b2BodyState )
+
+static void b2LimitVelocity( b2BodyState* state, float maxLinearSpeed )
+{
+	float v2 = b2LengthSquared( state->linearVelocity );
+	if ( v2 > maxLinearSpeed * maxLinearSpeed )
+	{
+		state->linearVelocity = b2MulSV( maxLinearSpeed / sqrtf( v2 ), state->linearVelocity );
+	}
+}
 
 // Get a validated body from a world using an id.
 b2Body* b2GetBodyFullId( b2World* world, b2BodyId bodyId )
@@ -238,6 +247,7 @@ b2BodyId b2CreateBody( b2WorldId worldId, const b2BodyDef* def )
 	bodySim->gravityScale = def->gravityScale;
 	bodySim->bodyId = bodyId;
 	bodySim->isBullet = def->isBullet;
+	bodySim->enableSensorHits = def->enableSensorHits;
 	bodySim->allowFastRotation = def->allowFastRotation;
 
 	if ( setId == b2_awakeSet )
@@ -473,6 +483,7 @@ int b2Body_GetContactData( b2BodyId bodyId, b2ContactData* contactData, int capa
 			b2Shape* shapeA = b2ShapeArray_Get( &world->shapes, contact->shapeIdA );
 			b2Shape* shapeB = b2ShapeArray_Get( &world->shapes, contact->shapeIdB );
 
+			contactData[index].contactId = (b2ContactId){ contact->contactId + 1, bodyId.world0, 0, contact->generation };
 			contactData[index].shapeIdA = (b2ShapeId){ shapeA->id + 1, bodyId.world0, shapeA->generation };
 			contactData[index].shapeIdB = (b2ShapeId){ shapeB->id + 1, bodyId.world0, shapeB->generation };
 
@@ -827,7 +838,7 @@ void b2Body_SetTargetTransform( b2BodyId bodyId, b2Transform target, float timeS
 	{
 		b2Rot q1 = sim->transform.q;
 		b2Rot q2 = target.q;
-		float deltaAngle = b2RelativeAngle( q2, q1 );
+		float deltaAngle = b2RelativeAngle( q1, q2 );
 		angularVelocity = invTimeStep * deltaAngle;
 	}
 
@@ -958,6 +969,8 @@ void b2Body_ApplyLinearImpulse( b2BodyId bodyId, b2Vec2 impulse, b2Vec2 point, b
 		b2BodySim* bodySim = b2BodySimArray_Get( &set->bodySims, localIndex );
 		state->linearVelocity = b2MulAdd( state->linearVelocity, bodySim->invMass, impulse );
 		state->angularVelocity += bodySim->invInertia * b2Cross( b2Sub( point, bodySim->center ), impulse );
+
+		b2LimitVelocity(state, world->maxLinearSpeed );
 	}
 }
 
@@ -978,6 +991,8 @@ void b2Body_ApplyLinearImpulseToCenter( b2BodyId bodyId, b2Vec2 impulse, bool wa
 		b2BodyState* state = b2BodyStateArray_Get( &set->bodyStates, localIndex );
 		b2BodySim* bodySim = b2BodySimArray_Get( &set->bodySims, localIndex );
 		state->linearVelocity = b2MulAdd( state->linearVelocity, bodySim->invMass, impulse );
+
+		b2LimitVelocity( state, world->maxLinearSpeed );
 	}
 }
 

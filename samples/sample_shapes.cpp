@@ -206,8 +206,8 @@ public:
 	{
 		Sample::Step();
 
-		m_context->draw.DrawSegment( b2Vec2_zero, { 0.5f, 0.0f }, b2_colorRed );
-		m_context->draw.DrawSegment( b2Vec2_zero, { 0.0f, 0.5f }, b2_colorGreen );
+		m_context->draw.DrawLine( b2Vec2_zero, { 0.5f, 0.0f }, b2_colorRed );
+		m_context->draw.DrawLine( b2Vec2_zero, { 0.0f, 0.5f }, b2_colorGreen );
 
 		// DrawTextLine( "toi calls, hits = %d, %d", b2_toiCalls, b2_toiHitCount );
 	}
@@ -422,16 +422,16 @@ public:
 		if ( m_drawBodyAABBs )
 		{
 			b2AABB aabb = b2Body_ComputeAABB( m_table1Id );
-			m_context->draw.DrawAABB( aabb, b2_colorYellow );
+			m_context->draw.DrawBounds( aabb, b2_colorYellow );
 
 			aabb = b2Body_ComputeAABB( m_table2Id );
-			m_context->draw.DrawAABB( aabb, b2_colorYellow );
+			m_context->draw.DrawBounds( aabb, b2_colorYellow );
 
 			aabb = b2Body_ComputeAABB( m_ship1Id );
-			m_context->draw.DrawAABB( aabb, b2_colorYellow );
+			m_context->draw.DrawBounds( aabb, b2_colorYellow );
 
 			aabb = b2Body_ComputeAABB( m_ship2Id );
-			m_context->draw.DrawAABB( aabb, b2_colorYellow );
+			m_context->draw.DrawBounds( aabb, b2_colorYellow );
 		}
 	}
 
@@ -727,7 +727,7 @@ public:
 		void* userDataA = b2Shape_GetUserData( shapeIdA );
 		void* userDataB = b2Shape_GetUserData( shapeIdB );
 
-		if ( userDataA == NULL || userDataB == NULL )
+		if ( userDataA == nullptr || userDataB == nullptr )
 		{
 			return true;
 		}
@@ -1688,13 +1688,13 @@ public:
 		m_referenceAngle = 0.0f;
 
 		b2WeldJointDef weldDef = b2DefaultWeldJointDef();
-		weldDef.referenceAngle = m_referenceAngle;
+		weldDef.base.bodyIdA = groundId;
+		weldDef.base.localFrameA.q = b2MakeRot(m_referenceAngle);
+		weldDef.base.localFrameB.p = b2Vec2_zero;
 		weldDef.angularHertz = 0.5f;
 		weldDef.angularDampingRatio = 0.7f;
 		weldDef.linearHertz = 0.5f;
 		weldDef.linearDampingRatio = 0.7f;
-		weldDef.bodyIdA = groundId;
-		weldDef.localAnchorB = b2Vec2_zero;
 
 		float r = 8.0f;
 		for ( float angle = 0.0f; angle < 360.0f; angle += 30.0f )
@@ -1706,8 +1706,9 @@ public:
 			b2Polygon box = b2MakeBox( 1.0f, 0.1f );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
-			weldDef.localAnchorA = bodyDef.position;
-			weldDef.bodyIdB = bodyId;
+			weldDef.base.localFrameA.p = bodyDef.position;
+			weldDef.base.bodyIdB = bodyId;
+
 			b2JointId jointId = b2CreateWeldJoint( m_worldId, &weldDef );
 			m_jointIds.push_back( jointId );
 		}
@@ -1752,7 +1753,9 @@ public:
 			int count = (int)m_jointIds.size();
 			for ( int i = 0; i < count; ++i )
 			{
-				b2WeldJoint_SetReferenceAngle( m_jointIds[i], m_referenceAngle );
+				b2Transform localFrameA = b2Joint_GetLocalFrameA( m_jointIds[i] );
+				localFrameA.q = b2MakeRot( m_referenceAngle );
+				b2Joint_SetLocalFrameA( m_jointIds[i], localFrameA );
 			}
 		}
 

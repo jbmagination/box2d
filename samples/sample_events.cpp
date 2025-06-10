@@ -120,10 +120,10 @@ public:
 				b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
 				b2RevoluteJointDef revoluteDef = b2DefaultRevoluteJointDef();
-				revoluteDef.bodyIdA = groundId;
-				revoluteDef.bodyIdB = bodyId;
-				revoluteDef.localAnchorA = bodyDef.position;
-				revoluteDef.localAnchorB = b2Vec2_zero;
+				revoluteDef.base.bodyIdA = groundId;
+				revoluteDef.base.bodyIdB = bodyId;
+				revoluteDef.base.localFrameA.p = bodyDef.position;
+				revoluteDef.base.localFrameB.p = b2Vec2_zero;
 				revoluteDef.maxMotorTorque = 200.0f;
 				revoluteDef.motorSpeed = 2.0f * sign;
 				revoluteDef.enableMotor = true;
@@ -783,12 +783,12 @@ public:
 		DrawTextLine( "count == %d", m_overlapCount );
 
 		int capacity = b2Shape_GetSensorCapacity( m_sensorId );
-		m_overlaps.clear();
-		m_overlaps.resize( capacity );
-		int count = b2Shape_GetSensorOverlaps( m_sensorId, m_overlaps.data(), capacity );
+		m_sensorData.clear();
+		m_sensorData.resize( capacity );
+		int count = b2Shape_GetSensorData( m_sensorId, m_sensorData.data(), capacity );
 		for ( int i = 0; i < count; ++i )
 		{
-			b2ShapeId shapeId = m_overlaps[i];
+			b2ShapeId shapeId = m_sensorData[i].visitorId;
 			b2AABB aabb = b2Shape_GetAABB( shapeId );
 			b2Vec2 point = b2AABB_Center( aabb );
 			m_context->draw.DrawPoint( point, 10.0f, b2_colorWhite );
@@ -802,11 +802,11 @@ public:
 
 	b2BodyId m_playerId;
 	b2ShapeId m_sensorId;
-	std::vector<b2ShapeId> m_overlaps;
+	std::vector<b2SensorData> m_sensorData;
 	int m_overlapCount;
 };
 
-static int sampleCharacterSensor = RegisterSample( "Events", "Foot Sensor", FootSensor::Create );
+static int sampleFootSensor = RegisterSample( "Events", "Foot Sensor", FootSensor::Create );
 
 struct BodyUserData
 {
@@ -1013,8 +1013,8 @@ public:
 						for ( int k = 0; k < manifold.pointCount; ++k )
 						{
 							b2ManifoldPoint point = manifold.points[k];
-							m_context->draw.DrawSegment( point.point, point.point + point.totalNormalImpulse * normal,
-														 b2_colorBlueViolet );
+							m_context->draw.DrawLine( point.point, point.point + point.totalNormalImpulse * normal,
+													  b2_colorBlueViolet );
 							m_context->draw.DrawPoint( point.point, 10.0f, b2_colorWhite );
 						}
 					}
@@ -1044,8 +1044,8 @@ public:
 						for ( int k = 0; k < manifold.pointCount; ++k )
 						{
 							b2ManifoldPoint point = manifold.points[k];
-							m_context->draw.DrawSegment( point.point, point.point + point.totalNormalImpulse * normal,
-														 b2_colorYellowGreen );
+							m_context->draw.DrawLine( point.point, point.point + point.totalNormalImpulse * normal,
+													  b2_colorYellowGreen );
 							m_context->draw.DrawPoint( point.point, 10.0f, b2_colorWhite );
 						}
 					}
@@ -1228,10 +1228,10 @@ static int sampleWeeble = RegisterSample( "Events", "Contact", ContactEvent::Cre
 
 // Shows how to make a rigid body character mover and use the pre-solve callback. In this
 // case the platform should get the pre-solve event, not the player.
-class Platformer : public Sample
+class Platform : public Sample
 {
 public:
-	explicit Platformer( SampleContext* context )
+	explicit Platform( SampleContext* context )
 		: Sample( context )
 	{
 		if ( m_context->restart == false )
@@ -1308,16 +1308,16 @@ public:
 		m_jumping = false;
 	}
 
-	static bool PreSolveStatic( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context )
+	static bool PreSolveStatic( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Vec2 point, b2Vec2 normal, void* context )
 	{
-		Platformer* platformer = static_cast<Platformer*>( context );
-		return platformer->PreSolve( shapeIdA, shapeIdB, manifold );
+		Platform* self = static_cast<Platform*>( context );
+		return self->PreSolve( shapeIdA, shapeIdB, point, normal );
 	}
 
 	// This callback must be thread-safe. It may be called multiple times simultaneously.
 	// Notice how this method is constant and doesn't change any data. It also
 	// does not try to access any values in the world that may be changing, such as contact data.
-	bool PreSolve( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold ) const
+	bool PreSolve( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Vec2 point, b2Vec2 normal ) const
 	{
 		assert( b2Shape_IsValid( shapeIdA ) );
 		assert( b2Shape_IsValid( shapeIdB ) );
@@ -1337,22 +1337,8 @@ public:
 			return true;
 		}
 
-		b2Vec2 normal = manifold->normal;
 		if ( sign * normal.y > 0.95f )
 		{
-			return true;
-		}
-
-		float separation = 0.0f;
-		for ( int i = 0; i < manifold->pointCount; ++i )
-		{
-			float s = manifold->points[i].separation;
-			separation = separation < s ? separation : s;
-		}
-
-		if ( separation > 0.1f * m_radius )
-		{
-			// shallow overlap
 			return true;
 		}
 
@@ -1459,7 +1445,7 @@ public:
 
 	static Sample* Create( SampleContext* context )
 	{
-		return new Platformer( context );
+		return new Platform( context );
 	}
 
 	bool m_jumping;
@@ -1472,7 +1458,7 @@ public:
 	b2BodyId m_movingPlatformId;
 };
 
-static int samplePlatformer = RegisterSample( "Events", "Platformer", Platformer::Create );
+static int samplePlatformer = RegisterSample( "Events", "Platformer", Platform::Create );
 
 // This shows how to process body events.
 class BodyMove : public Sample
@@ -1776,16 +1762,16 @@ public:
 
 		// Determine the necessary capacity
 		int capacity = b2Shape_GetSensorCapacity( sensorShapeId );
-		m_overlaps.resize( capacity );
+		m_sensorData.resize( capacity );
 
 		// Get all overlaps and record the actual count
-		int count = b2Shape_GetSensorOverlaps( sensorShapeId, m_overlaps.data(), capacity );
-		m_overlaps.resize( count );
+		int count = b2Shape_GetSensorData( sensorShapeId, m_sensorData.data(), capacity );
+		m_sensorData.resize( count );
 
 		int start = snprintf( buffer, sizeof( buffer ), "%s: ", prefix );
 		for ( int i = 0; i < count && start < sizeof( buffer ); ++i )
 		{
-			b2ShapeId visitorId = m_overlaps[i];
+			b2ShapeId visitorId = m_sensorData[i].visitorId;
 			if ( b2Shape_IsValid( visitorId ) == false )
 			{
 				continue;
@@ -1827,7 +1813,7 @@ public:
 		b2Vec2 origin = { 5.0f, 1.0f };
 		b2Vec2 translation = { -10.0f, 0.0f };
 		b2RayResult result = b2World_CastRayClosest( m_worldId, origin, translation, b2DefaultQueryFilter() );
-		m_context->draw.DrawSegment( origin, origin + translation, b2_colorDimGray );
+		m_context->draw.DrawLine( origin, origin + translation, b2_colorDimGray );
 
 		if ( result.hit )
 		{
@@ -1846,7 +1832,572 @@ public:
 
 	b2BodyId m_kinematicBodyId;
 
-	std::vector<b2ShapeId> m_overlaps;
+	std::vector<b2SensorData> m_sensorData;
 };
 
 static int sampleSensorTypes = RegisterSample( "Events", "Sensor Types", SensorTypes::Create );
+
+// This sample shows how to break joints when the internal reaction force becomes large. Instead of polling, this uses events.
+class JointEvent : public Sample
+{
+public:
+	enum
+	{
+		e_count = 6
+	};
+
+	explicit JointEvent( SampleContext* context )
+		: Sample( context )
+	{
+		if ( m_context->restart == false )
+		{
+			m_context->camera.m_center = { 0.0f, 8.0f };
+			m_context->camera.m_zoom = 25.0f * 0.7f;
+		}
+
+		b2BodyDef bodyDef = b2DefaultBodyDef();
+		b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
+
+		b2ShapeDef shapeDef = b2DefaultShapeDef();
+		b2Segment segment = { { -40.0f, 0.0f }, { 40.0f, 0.0f } };
+		b2CreateSegmentShape( groundId, &shapeDef, &segment );
+
+		for ( int i = 0; i < e_count; ++i )
+		{
+			m_jointIds[i] = b2_nullJointId;
+		}
+
+		b2Vec2 position = { -12.5f, 10.0f };
+		bodyDef.type = b2_dynamicBody;
+		bodyDef.enableSleep = false;
+
+		b2Polygon box = b2MakeBox( 1.0f, 1.0f );
+
+		int index = 0;
+
+		float forceThreshold = 20000.0f;
+		float torqueThreshold = 10000.0f;
+
+		// distance joint
+		{
+			assert( index < e_count );
+
+			bodyDef.position = position;
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2CreatePolygonShape( bodyId, &shapeDef, &box );
+
+			float length = 2.0f;
+			b2Vec2 pivot1 = { position.x, position.y + 1.0f + length };
+			b2Vec2 pivot2 = { position.x, position.y + 1.0f };
+			b2DistanceJointDef jointDef = b2DefaultDistanceJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = bodyId;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot1 );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot2 );
+			jointDef.length = length;
+			jointDef.base.forceThreshold = forceThreshold;
+			jointDef.base.torqueThreshold = torqueThreshold;
+			jointDef.base.collideConnected = true;
+			jointDef.base.userData = (void*)(intptr_t)index;
+			m_jointIds[index] = b2CreateDistanceJoint( m_worldId, &jointDef );
+		}
+
+		position.x += 5.0f;
+		++index;
+
+		// motor joint
+		{
+			assert( index < e_count );
+
+			bodyDef.position = position;
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2CreatePolygonShape( bodyId, &shapeDef, &box );
+
+			b2MotorJointDef jointDef = b2DefaultMotorJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = bodyId;
+			jointDef.base.localFrameA.p = position;
+			jointDef.maxForce = 1000.0f;
+			jointDef.maxTorque = 20.0f;
+			jointDef.base.forceThreshold = forceThreshold;
+			jointDef.base.torqueThreshold = torqueThreshold;
+			jointDef.base.collideConnected = true;
+			jointDef.base.userData = (void*)(intptr_t)index;
+			m_jointIds[index] = b2CreateMotorJoint( m_worldId, &jointDef );
+		}
+
+		position.x += 5.0f;
+		++index;
+
+		// prismatic joint
+		{
+			assert( index < e_count );
+
+			bodyDef.position = position;
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2CreatePolygonShape( bodyId, &shapeDef, &box );
+
+			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2PrismaticJointDef jointDef = b2DefaultPrismaticJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = bodyId;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+			jointDef.base.forceThreshold = forceThreshold;
+			jointDef.base.torqueThreshold = torqueThreshold;
+			jointDef.base.collideConnected = true;
+			jointDef.base.userData = (void*)(intptr_t)index;
+			m_jointIds[index] = b2CreatePrismaticJoint( m_worldId, &jointDef );
+		}
+
+		position.x += 5.0f;
+		++index;
+
+		// revolute joint
+		{
+			assert( index < e_count );
+
+			bodyDef.position = position;
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2CreatePolygonShape( bodyId, &shapeDef, &box );
+
+			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = bodyId;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+			jointDef.base.forceThreshold = forceThreshold;
+			jointDef.base.torqueThreshold = torqueThreshold;
+			jointDef.base.collideConnected = true;
+			jointDef.base.userData = (void*)(intptr_t)index;
+			m_jointIds[index] = b2CreateRevoluteJoint( m_worldId, &jointDef );
+		}
+
+		position.x += 5.0f;
+		++index;
+
+		// weld joint
+		{
+			assert( index < e_count );
+
+			bodyDef.position = position;
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2CreatePolygonShape( bodyId, &shapeDef, &box );
+
+			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2WeldJointDef jointDef = b2DefaultWeldJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = bodyId;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+			jointDef.angularHertz = 2.0f;
+			jointDef.angularDampingRatio = 0.5f;
+			jointDef.base.forceThreshold = forceThreshold;
+			jointDef.base.torqueThreshold = torqueThreshold;
+			jointDef.base.collideConnected = true;
+			jointDef.base.userData = (void*)(intptr_t)index;
+			m_jointIds[index] = b2CreateWeldJoint( m_worldId, &jointDef );
+		}
+
+		position.x += 5.0f;
+		++index;
+
+		// wheel joint
+		{
+			assert( index < e_count );
+
+			bodyDef.position = position;
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2CreatePolygonShape( bodyId, &shapeDef, &box );
+
+			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2WheelJointDef jointDef = b2DefaultWheelJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = bodyId;
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+			jointDef.hertz = 1.0f;
+			jointDef.dampingRatio = 0.7f;
+			jointDef.lowerTranslation = -1.0f;
+			jointDef.upperTranslation = 1.0f;
+			jointDef.enableLimit = true;
+			jointDef.enableMotor = true;
+			jointDef.maxMotorTorque = 10.0f;
+			jointDef.motorSpeed = 1.0f;
+			jointDef.base.forceThreshold = forceThreshold;
+			jointDef.base.torqueThreshold = torqueThreshold;
+			jointDef.base.collideConnected = true;
+			jointDef.base.userData = (void*)(intptr_t)index;
+			m_jointIds[index] = b2CreateWheelJoint( m_worldId, &jointDef );
+		}
+
+		position.x += 5.0f;
+		++index;
+	}
+
+	void Step() override
+	{
+		Sample::Step();
+
+		// Process joint events
+		b2JointEvents events = b2World_GetJointEvents( m_worldId );
+		for ( int i = 0; i < events.count; ++i )
+		{
+			// Destroy the joint if it is still valid
+			const b2JointEvent* event = events.jointEvents + i;
+
+			if ( b2Joint_IsValid( event->jointId ) )
+			{
+				int index = (int)(intptr_t)event->userData;
+				assert( 0 <= index && index < e_count );
+				b2DestroyJoint( event->jointId );
+				m_jointIds[index] = b2_nullJointId;
+			}
+		}
+	}
+
+	static Sample* Create( SampleContext* context )
+	{
+		return new JointEvent( context );
+	}
+
+	b2JointId m_jointIds[e_count];
+};
+
+static int sampleJointEvent = RegisterSample( "Events", "Joint", JointEvent::Create );
+
+class PersistentContact : public Sample
+{
+public:
+	explicit PersistentContact( SampleContext* context )
+		: Sample( context )
+	{
+		if ( m_context->restart == false )
+		{
+			m_context->camera.m_center = { 0.0f, 6.0f };
+			m_context->camera.m_zoom = 7.5f;
+		}
+
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
+
+			b2Vec2 points[22];
+			float x = 10.0f;
+			for ( int i = 0; i < 20; ++i )
+			{
+				points[i] = { x, 0.0f };
+				x -= 1.0f;
+			}
+
+			points[20] = { -9.0f, 10.0f };
+			points[21] = { 10.0f, 10.0f };
+
+			b2ChainDef chainDef = b2DefaultChainDef();
+			chainDef.points = points;
+			chainDef.count = 22;
+			chainDef.isLoop = true;
+
+			b2CreateChain( groundId, &chainDef );
+		}
+
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.type = b2_dynamicBody;
+			bodyDef.position = { -8.0f, 1.0f };
+			bodyDef.linearVelocity = { 2.0f, 0.0f };
+
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			shapeDef.enableContactEvents = true;
+			b2Circle circle = { { 0.0f, 0.0f }, 0.5f };
+			b2CreateCircleShape( bodyId, &shapeDef, &circle );
+		}
+
+		m_contactId = b2_nullContactId;
+	}
+
+	void Step() override
+	{
+		Sample::Step();
+
+		b2ContactEvents events = b2World_GetContactEvents( m_worldId );
+		for ( int i = 0; i < events.beginCount && i < 1; ++i )
+		{
+			b2ContactBeginTouchEvent event = events.beginEvents[i];
+			m_contactId = events.beginEvents[i].contactId;
+		}
+
+		for ( int i = 0; i < events.endCount; ++i )
+		{
+			if ( B2_ID_EQUALS( m_contactId, events.endEvents[i].contactId ) )
+			{
+				m_contactId = b2_nullContactId;
+				break;
+			}
+		}
+
+		if ( B2_IS_NON_NULL( m_contactId ) && b2Contact_IsValid( m_contactId ) )
+		{
+			b2ContactData data = b2Contact_GetData( m_contactId );
+
+			for ( int i = 0; i < data.manifold.pointCount; ++i )
+			{
+				const b2ManifoldPoint* manifoldPoint = data.manifold.points + i;
+				b2Vec2 p1 = manifoldPoint->point;
+				b2Vec2 p2 = p1 + manifoldPoint->totalNormalImpulse * data.manifold.normal;
+				m_draw->DrawLine( p1, p2, b2_colorCrimson );
+				m_draw->DrawPoint( p1, 6.0f, b2_colorCrimson );
+				m_draw->DrawString( p1, "%.2f", manifoldPoint->totalNormalImpulse );
+			}
+		}
+		else
+		{
+			m_contactId = b2_nullContactId;
+		}
+	}
+
+	static Sample* Create( SampleContext* context )
+	{
+		return new PersistentContact( context );
+	}
+
+	b2ContactId m_contactId;
+};
+
+static int samplePersistentContact = RegisterSample( "Events", "Persistent Contact", PersistentContact::Create );
+
+class SensorHits : public Sample
+{
+public:
+	explicit SensorHits( SampleContext* context )
+		: Sample( context )
+		, m_transforms{}
+	{
+		if ( m_context->restart == false )
+		{
+			m_context->camera.m_center = { 0.0f, 5.0f };
+			m_context->camera.m_zoom = 7.5f;
+		}
+
+		b2BodyId groundId;
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.name = "ground";
+
+			groundId = b2CreateBody( m_worldId, &bodyDef );
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+
+			b2Segment groundSegment = { { -10.0f, 0.0f }, { 10.0f, 0.0f } };
+			b2CreateSegmentShape( groundId, &shapeDef, &groundSegment );
+
+			groundSegment = { { 10.0f, 0.0f }, { 10.0f, 10.0f } };
+			b2CreateSegmentShape( groundId, &shapeDef, &groundSegment );
+		}
+
+		// Static sensor
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.name = "static sensor";
+			bodyDef.position = { -4.0f, 1.0f };
+
+			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			shapeDef.isSensor = true;
+			shapeDef.enableSensorEvents = true;
+
+			b2Segment segment = { { 0.0f, 0.0f }, { 0.0f, 10.0f } };
+			m_staticSensorId = b2CreateSegmentShape( bodyId, &shapeDef, &segment );
+		}
+
+		// Kinematic sensor
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.name = "kinematic sensor";
+			bodyDef.type = b2_kinematicBody;
+			bodyDef.position = { 0.0f, 1.0f };
+			bodyDef.linearVelocity = { 0.5f, 0.0f };
+
+			m_kinematicBodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			shapeDef.isSensor = true;
+			shapeDef.enableSensorEvents = true;
+
+			b2Segment segment = { { 0.0f, 0.0f }, { 0.0f, 10.0f } };
+			m_kinematicSensorId = b2CreateSegmentShape( m_kinematicBodyId, &shapeDef, &segment );
+		}
+
+		// Dynamic sensor
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.name = "dynamic sensor";
+			bodyDef.type = b2_dynamicBody;
+			bodyDef.position = { 4.0f, 1.0f };
+
+			m_dynamicBodyId = b2CreateBody( m_worldId, &bodyDef );
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			shapeDef.isSensor = true;
+			shapeDef.enableSensorEvents = true;
+
+			b2Capsule capsule = { { 0.0f, 1.0f }, { 0.0f, 9.0f }, 0.1f };
+			m_dynamicSensorId = b2CreateCapsuleShape( m_dynamicBodyId, &shapeDef, &capsule );
+
+			b2Vec2 pivot = bodyDef.position + b2Vec2{ 0.0f, 6.0f };
+			b2Vec2 axis = { 1.0f, 0.0f };
+			b2PrismaticJointDef jointDef = b2DefaultPrismaticJointDef();
+			jointDef.base.bodyIdA = groundId;
+			jointDef.base.bodyIdB = m_dynamicBodyId;
+			jointDef.base.localFrameA.q = b2MakeRotFromUnitVector( axis );
+			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( groundId, pivot );
+			jointDef.base.localFrameB.q = b2MakeRotFromUnitVector( axis );
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( m_dynamicBodyId, pivot );
+			jointDef.enableMotor = true;
+			jointDef.maxMotorForce = 1000.0f;
+			jointDef.motorSpeed = 0.5f;
+
+			m_jointId = b2CreatePrismaticJoint( m_worldId, &jointDef );
+		}
+
+		m_beginCount = 0;
+		m_endCount = 0;
+		m_bodyId = {};
+		m_shapeId = {};
+		m_transformCount = 0;
+		m_enableSensorHits = true;
+		m_isBullet = true;
+
+		Launch();
+	}
+
+	void Launch()
+	{
+		if ( B2_IS_NON_NULL( m_bodyId ) )
+		{
+			b2DestroyBody( m_bodyId );
+		}
+
+		m_transformCount = 0;
+		m_beginCount = 0;
+		m_endCount = 0;
+
+		b2BodyDef bodyDef = b2DefaultBodyDef();
+		bodyDef.type = b2_dynamicBody;
+		bodyDef.position = { -26.7f, 6.0f };
+		float speed = RandomFloatRange( 200.0f, 300.0f );
+		bodyDef.linearVelocity = { speed, 0.0f };
+		bodyDef.isBullet = m_isBullet;
+		bodyDef.enableSensorHits = m_enableSensorHits;
+		m_bodyId = b2CreateBody( m_worldId, &bodyDef );
+
+		b2ShapeDef shapeDef = b2DefaultShapeDef();
+		shapeDef.enableSensorEvents = true;
+		shapeDef.material.friction = 0.8f;
+		shapeDef.material.rollingResistance = 0.01f;
+		b2Circle circle = { { 0.0f, 0.0f }, 0.25f };
+		m_shapeId = b2CreateCircleShape( m_bodyId, &shapeDef, &circle );
+	}
+
+	void UpdateGui() override
+	{
+		float height = 120.0f;
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_context->camera.m_height - height - 50.0f ), ImGuiCond_Once );
+		ImGui::SetNextWindowSize( ImVec2( 120.0f, height ) );
+
+		ImGui::Begin( "Sensor Hit", nullptr, ImGuiWindowFlags_NoResize );
+
+		ImGui::Checkbox( "Enable Hits", &m_enableSensorHits );
+		ImGui::Checkbox( "Bullet", &m_isBullet );
+
+		if ( ImGui::Button( "Launch" ) || glfwGetKey( m_context->window, GLFW_KEY_B ) == GLFW_PRESS )
+		{
+			Launch();
+		}
+
+		ImGui::End();
+	}
+
+	void CollectTransforms( b2ShapeId sensorShapeId )
+	{
+		constexpr int capacity = 5;
+		b2SensorData sensorData[capacity];
+		int count = b2Shape_GetSensorData( sensorShapeId, sensorData, capacity );
+
+		for ( int i = 0; i < count && m_transformCount < m_transformCapacity; ++i )
+		{
+			m_transforms[m_transformCount] = sensorData[i].visitTransform;
+			m_transformCount += 1;
+		}
+	}
+
+	void Step() override
+	{
+		b2Vec2 p = b2Body_GetPosition( m_kinematicBodyId );
+		if (p.x > 1.0f)
+		{
+			b2Body_SetLinearVelocity( m_kinematicBodyId, { -0.5f, 0.0f } );
+		}
+		else if (p.x < -1.0f)
+		{
+			b2Body_SetLinearVelocity( m_kinematicBodyId, { 0.5f, 0.0f } );
+		}
+
+		float x = b2PrismaticJoint_GetTranslation( m_jointId );
+		if (x > 1.0f)
+		{
+			b2PrismaticJoint_SetMotorSpeed( m_jointId, -0.5f );
+		}
+		else if (x < -1.0f)
+		{
+			b2PrismaticJoint_SetMotorSpeed( m_jointId, 0.5f );
+		}
+
+		Sample::Step();
+
+		for (int i = 0; i < m_transformCount; ++i)
+		{
+			m_draw->DrawTransform( m_transforms[i] );
+		}
+
+		b2SensorEvents sensorEvents = b2World_GetSensorEvents( m_worldId );
+		m_beginCount += sensorEvents.beginCount;
+		m_endCount += sensorEvents.endCount;
+
+		for (int i = 0; i < sensorEvents.beginCount; ++i)
+		{
+			const b2SensorBeginTouchEvent* event = sensorEvents.beginEvents + i;
+			CollectTransforms( event->sensorShapeId );
+		}
+
+		DrawTextLine( "begin touch count = %d", m_beginCount );
+		DrawTextLine( "end touch count = %d", m_endCount );
+	}
+
+	static Sample* Create( SampleContext* context )
+	{
+		return new SensorHits( context );
+	}
+
+	b2ShapeId m_staticSensorId;
+	b2ShapeId m_kinematicSensorId;
+	b2ShapeId m_dynamicSensorId;
+
+	b2BodyId m_kinematicBodyId;
+	b2BodyId m_dynamicBodyId;
+	b2JointId m_jointId;
+
+	b2BodyId m_bodyId;
+	b2ShapeId m_shapeId;
+
+	static constexpr int m_transformCapacity = 20;
+	int m_transformCount;
+	b2Transform m_transforms[m_transformCapacity];
+
+	bool m_isBullet;
+	bool m_enableSensorHits;
+	int m_beginCount;
+	int m_endCount;
+};
+
+static int sampleSensorHits = RegisterSample( "Events", "Sensor Hits", SensorHits::Create );

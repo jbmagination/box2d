@@ -25,7 +25,9 @@ int MathTest( void )
 		ENSURE_SMALL( r.c - c, 0.002f );
 		ENSURE_SMALL( r.s - s, 0.002f );
 
-		float xn = b2UnwindLargeAngle( angle );
+		float xn = b2UnwindAngle( angle );
+		ENSURE( -B2_PI <= xn && xn <= B2_PI );
+
 		float a = b2Atan2( s, c );
 		ENSURE( b2IsValidFloat( a ) );
 
@@ -156,6 +158,20 @@ int MathTest( void )
 		float angle = b2Rot_GetAngle(q);
 		ENSURE_SMALL( alpha * 0.5f * B2_PI - angle, 5.0f * B2_PI / 180.0f );
 		//printf("angle = [%g %g %g]\n", alpha, alpha * 0.5f * B2_PI, angle);
+	}
+	
+	// Test relative angle
+	float baseAngle = 0.75f * B2_PI;
+	q1 = b2MakeRot(baseAngle);
+	for ( float t = -10.0f; t < 10.0f; t += 0.01f )
+	{
+		float angle = B2_PI * t;
+		q2 = b2MakeRot(angle);
+
+		float relativeAngle = b2RelativeAngle( q1, q2 );
+		float unwoundAngle = b2UnwindAngle( angle - baseAngle );
+		float tolerance = 0.1f * B2_PI / 180.0f;
+		ENSURE_SMALL( relativeAngle - unwoundAngle, tolerance );
 	}
 	
 	return 0;
